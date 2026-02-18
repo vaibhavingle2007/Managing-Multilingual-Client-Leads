@@ -60,9 +60,10 @@ No pre-built projects, templates, or external proprietary code were used.
 
 ## Features
 
-- Feature 1
-- Feature 2
-- Feature 3
+- Multiple language support (8 languages)
+- Auto assignment
+- Lead tagging
+- Firebase for authentication 
 
 ## Setup Instructions
 
@@ -123,6 +124,7 @@ Frontend runs at: `http://localhost:3000`
 
 ## Team
 
-- Member 1
-- Member 2
-- Member 3
+- Vaibhav ignle
+- Vedang Lambat
+- Siddhesh Athavale
+- Sameer Yadav
