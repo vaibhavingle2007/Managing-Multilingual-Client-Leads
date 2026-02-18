@@ -1,130 +1,131 @@
-# Multilingual Client Leads Manager
+# 🌍 Multilingual Client Leads Manager
 
-## Problem Statement
+> **ENKRYPTIA 2K26 Hackathon Project**
+> A scalable solution for managing multilingual client leads with AI-powered translation and real-time communication.
 
-Managing Multilingual Client Leads
+---
 
-## Solution Overview
+## 🚀 Live Demo
 
-This project proposes a practical and scalable solution developed entirely during the
-8-hour ENKRYPTIA 2K26 Hackathon. The focus is on functionality, usability, and clarity
-rather than overengineering.
+| Component | URL | Status |
+| :--- | :--- | :--- |
+| **Frontend** | [https://frontend-gamma-five-83.vercel.app](https://frontend-gamma-five-83.vercel.app) | 🟢 Live |
+| **Backend API** | [https://backend-psi-five-44.vercel.app/docs](https://backend-psi-five-44.vercel.app/docs) | 🟢 Live |
 
-## Tech Stack
+---
 
-- **Frontend:** Next.js 15 (App Router) + TypeScript + Material UI
-- **Backend:** FastAPI (Python)
-- **Authentication:** Firebase Auth
-- **Database:** Supabase (PostgreSQL)
-- **Deployment:** _(TBD)_
+## 📖 Problem Statement
 
-## Project Structure
+Global businesses face a communication barrier when dealing with leads who speak different languages. This project bridges that gap by enabling seamless, bi-directional communication between clients and agents, regardless of their native language.
+
+## ✨ Key Features
+
+### **1. 🌍 Multilingual AI Engine**
+*   **Smart Language Detection:** Automatically detects the client's browser language.
+*   **Bi-Directional Translation (Gemini AI):**
+    *   **Client → Agent:** Translates non-English lead inquiries into English for agents.
+    *   **Agent → Client:** Automatically translates agent replies **back into the client's native language**.
+*   **Original & Translated View:** Stores both versions of every message to ensure context accuracy.
+
+### **2. 🔐 Authentication & Security**
+*   **Firebase Authentication:** Secure login via **Google Sign-In** and **Email/Password**.
+*   **Role-Based Access Control (RBAC):**
+    *   **Clients:** Access to Submission Portal (`/submit`).
+    *   **Agents:** Access to Admin Dashboard (`/dashboard`).
+*   **Protected Routes:** Guards prevent unauthorized access.
+
+### **3. 📝 Client Experience**
+*   **Premium Lead Portal:**
+    *   Glassmorphism UI with a sticky sidebar form.
+    *   Real-time form validation.
+    *   **"My Submissions" Feed:** Clients track their lead status (New, Contacted, Won) live.
+*   **Instant Replies:** Clients see agent responses instantly, auto-translated to their language.
+
+### **4. 📊 Agent Dashboard**
+*   **Lead Management:** Grid view with filtering by Status and Language.
+*   **Communication Hub:**
+    *   **Expandable Rows:** View full conversation history.
+    *   **Reply System:** Type in English → Sends in Client's Language.
+    *   **Visual Confidence:** Flags indicate the client's region (e.g., 🇸🇦 Arabic, 🇫🇷 French).
+
+### **5. 📨 Notification System**
+*   **Email Alerts:** Clients receive email notifications when agents reply (via SMTP).
+*   **Real-time Updates:** Auto-refreshing dashboards (swr/polling).
+
+---
+
+## 🛠️ Tech Stack
+
+- **Frontend:** Next.js 15 (App Router), TypeScript, Material UI, Glassmorphism CSS.
+- **Backend:** FastAPI (Python), Pydantic.
+- **AI Engine:** Google Gemini Pro (Translation & Detection).
+- **Database:** Supabase (PostgreSQL) with Row Level Security.
+- **Authentication:** Firebase Auth (Google + Email/Pass).
+- **Deployment:** Vercel (Frontend & Backend Serverless).
+
+---
+
+## 📂 Project Structure
 
 ```
 hackathon/
 ├── backend/                 # FastAPI backend
-│   ├── main.py              # API entry point (CORS + root endpoint)
-│   ├── requirements.txt     # Python dependencies
-│   ├── .env                 # Environment variables (not committed)
-│   └── venv/                # Python virtual environment
+│   ├── main.py              # API entry point
+│   ├── services/            # Logic for Gemini, Supabase, SMTP
+│   ├── migrations/          # SQL scripts for database setup
+│   ├── vercel.json          # Deployment config
+│   └── requirements.txt     # Python dependencies
 │
 ├── frontend/                # Next.js frontend
-│   ├── src/
-│   │   ├── app/             # Next.js App Router pages
-│   │   ├── components/      # Reusable UI components
-│   │   ├── services/        # API service functions
-│   │   └── lib/             # Utilities & config (Firebase, etc.)
-│   ├── .env.local           # Environment variables (not committed)
-│   └── package.json         # Node.js dependencies
+│   ├── src/app/             # Pages: /submit, /dashboard, /login
+│   ├── src/components/      # UI Components
+│   ├── src/services/        # API integration
+│   └── src/contexts/        # Auth Context Provider
 │
-└── Readme.md
+└── README.md
 ```
 
-## Development Approach
-
-- The project was started from scratch at the beginning of the hackathon.
-- All development, testing, and documentation were completed within the official
-  hackathon time window.
-- Hourly commits were maintained to ensure transparent progress tracking.
-
-## AI Assistance & Tools
-
-AI tools were used strictly as development assistants for:
-
-- Architecture planning
-- Clean coding practices
-- Frontend design consistency
-- Debugging and testing guidance
-
-No pre-built projects, templates, or external proprietary code were used.
-
-## Features
-
-- Multiple language support (8 languages)
-- Auto assignment
-- Lead tagging
-- Firebase for authentication 
-
-## Setup Instructions
+## ⚙️ Local Setup Instructions
 
 ### Prerequisites
-
 - Python 3.11+
 - Node.js 18+
-- npm
 
-### Backend
-
+### 1. Backend Setup
 ```bash
 cd backend
 python3 -m venv venv
 source venv/bin/activate        # macOS/Linux
+# .\venv\Scripts\activate      # Windows
 pip install -r requirements.txt
-cp .env.example .env            # Fill in your Supabase credentials
+
+# Create .env file with:
+# SUPABASE_URL=...
+# SUPABASE_KEY=...
+# GEMINI_API_KEY=...
+
 uvicorn main:app --reload
 ```
+Runs at: `http://localhost:8000`
 
-Backend runs at: `http://localhost:8000`
-
-### Frontend
-
+### 2. Frontend Setup
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local      # Fill in your Firebase credentials
+
+# Create .env.local file with:
+# NEXT_PUBLIC_FIREBASE_Config...
+# NEXT_PUBLIC_API_URL=http://localhost:8000
+
 npm run dev
 ```
+Runs at: `http://localhost:3000`
 
-Frontend runs at: `http://localhost:3000`
+---
 
-### Environment Variables
+## 👥 Team
 
-**Backend (`backend/.env`):**
-
-| Variable       | Description              |
-| -------------- | ------------------------ |
-| `SUPABASE_URL` | Supabase project URL     |
-| `SUPABASE_KEY` | Supabase anonymous key   |
-
-**Frontend (`frontend/.env.local`):**
-
-| Variable                                    | Description                |
-| ------------------------------------------- | -------------------------- |
-| `NEXT_PUBLIC_FIREBASE_API_KEY`              | Firebase API key           |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`          | Firebase auth domain       |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID`           | Firebase project ID        |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`       | Firebase storage bucket    |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`  | Firebase messaging sender  |
-| `NEXT_PUBLIC_FIREBASE_APP_ID`              | Firebase app ID            |
-| `NEXT_PUBLIC_API_URL`                       | Backend API URL            |
-
-## Demo
-
-- Deployed Link / Screen Recording Link
-
-## Team
-
-- Vaibhav ignle
+- Vaibhav Ingle
 - Vedang Lambat
 - Siddhesh Athavale
 - Sameer Yadav
