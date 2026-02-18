@@ -20,7 +20,10 @@ logger = logging.getLogger(__name__)
 #  Configuration                                                      #
 # ------------------------------------------------------------------ #
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+def _get_api_key() -> str:
+    """Read the Gemini API key lazily (after load_dotenv has run)."""
+    return os.getenv("GEMINI_API_KEY", "")
+
 
 SUPPORTED_LANGUAGES = {
     "english",
@@ -50,7 +53,7 @@ LANG_NAME_TO_CODE: dict[str, str] = {v: k for k, v in LANG_CODE_MAP.items()}
 
 def _get_client() -> genai.Client:
     """Return a configured Gemini client instance."""
-    return genai.Client(api_key=GEMINI_API_KEY)
+    return genai.Client(api_key=_get_api_key())
 
 
 # ------------------------------------------------------------------ #
@@ -70,7 +73,7 @@ async def detect_language(text: str) -> dict[str, str]:
 
     Fallback: returns english / "en" / "low" if anything goes wrong.
     """
-    if not GEMINI_API_KEY:
+    if not _get_api_key():
         logger.warning("GEMINI_API_KEY not set — skipping detection")
         return _fallback_detection()
 
@@ -131,7 +134,7 @@ async def translate_to_english(text: str, source_language: str = "") -> dict[str
 
     Fallback: returns the original text unchanged.
     """
-    if not GEMINI_API_KEY:
+    if not _get_api_key():
         logger.warning("GEMINI_API_KEY not set — skipping translation")
         return _fallback_translation(text, source_language)
 

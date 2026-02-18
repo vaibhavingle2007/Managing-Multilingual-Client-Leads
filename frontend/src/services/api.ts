@@ -24,6 +24,29 @@ export interface ApiResponse<T = unknown> {
     error?: string;
 }
 
+/** Shape of a lead returned from the backend */
+export interface Lead {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    original_message: string;
+    translated_message: string;
+    language: string;
+    tag: string | null;
+    status: string;
+    assigned_to: string | null;
+    created_at: string;
+}
+
+/** Shape of the paginated leads list response */
+export interface LeadsListResponse {
+    leads: Lead[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+
 /**
  * Submit a new lead to the backend.
  *
@@ -38,6 +61,44 @@ export async function submitLead(
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
         });
+
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => null);
+            return {
+                success: false,
+                error:
+                    errorBody?.detail ||
+                    `Request failed with status ${response.status}`,
+            };
+        }
+
+        const data = await response.json();
+        return { success: true, data };
+    } catch (err) {
+        const message =
+            err instanceof Error ? err.message : "Network error — is the backend running?";
+        return { success: false, error: message };
+    }
+}
+
+/**
+ * Fetch leads from the backend.
+ *
+ * GET /leads
+ */
+export async function fetchLeads(
+    limit = 50,
+    offset = 0,
+    status?: string
+): Promise<ApiResponse<LeadsListResponse>> {
+    try {
+        const params = new URLSearchParams({
+            limit: String(limit),
+            offset: String(offset),
+        });
+        if (status) params.set("status", status);
+
+        const response = await fetch(`${API_BASE_URL}/leads?${params}`);
 
         if (!response.ok) {
             const errorBody = await response.json().catch(() => null);
