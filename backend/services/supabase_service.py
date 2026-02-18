@@ -125,3 +125,37 @@ async def get_lead_count() -> int:
     except Exception as exc:
         logger.error("Failed to count leads: %s", exc)
         return 0
+
+
+async def update_lead_status(lead_id: str, status: str) -> dict[str, Any]:
+    """
+    Update the status of a lead.
+
+    Args:
+        lead_id: UUID of the lead to update.
+        status:  New status value (e.g. 'Contacted', 'Qualified').
+
+    Returns:
+        The updated row as a dictionary.
+
+    Raises:
+        RuntimeError: If the update fails or lead is not found.
+    """
+    try:
+        client = get_supabase()
+        response = (
+            client.table(LEADS_TABLE)
+            .update({"status": status})
+            .eq("id", lead_id)
+            .execute()
+        )
+
+        if response.data and len(response.data) > 0:
+            logger.info("Lead %s status updated to '%s'", lead_id, status)
+            return response.data[0]
+
+        raise RuntimeError(f"Lead {lead_id} not found")
+
+    except Exception as exc:
+        logger.error("Failed to update lead status: %s", exc)
+        raise RuntimeError(f"Database update failed: {exc}") from exc

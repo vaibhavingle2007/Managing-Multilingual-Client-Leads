@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from services.gemini_service import detect_language, translate_to_english
-from services.supabase_service import insert_lead, get_all_leads, get_lead_count
+from services.supabase_service import insert_lead, get_all_leads, get_lead_count, update_lead_status
 
 load_dotenv()
 
@@ -91,6 +91,14 @@ class LeadsListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+ALLOWED_STATUSES = ["New", "Contacted", "Qualified", "Lost", "Won"]
+
+
+class StatusUpdate(BaseModel):
+    """Payload for updating a lead's status."""
+    status: str
 
 
 # ------------------------------------------------------------------ #
@@ -228,3 +236,24 @@ async def list_leads(
     except RuntimeError as exc:
         logger.error("Failed to list leads: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to fetch leads")
+
+
+@app.patch("/leads/{lead_id}")
+async def patch_lead_status(lead_id: str, body: StatusUpdate):
+    """
+    Update the status of an existing lead.
+
+    Allowed statuses: New, Contacted, Qualified, Lost, Won.
+    """
+    if body.status not in ALLOWED_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid status '{body.status}'. Allowed: {ALLOWED_STATUSES}",
+        )
+
+    try:
+        updated = await update_lead_status(lead_id, body.status)
+        return {"success": True, "lead": updated}
+    except RuntimeError as exc:
+        logger.error("Failed to update lead %s: %s", lead_id, exc)
+        raise HTTPException(status_code=500, detail=str(exc))

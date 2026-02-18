@@ -14,12 +14,21 @@ import {
     Button,
     TextField,
     InputAdornment,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    Select,
+    MenuItem,
+    FormControl,
+    InputLabel,
+    Snackbar,
+    type SelectChangeEvent,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SearchIcon from "@mui/icons-material/Search";
-import PersonIcon from "@mui/icons-material/Person";
-import EmailIcon from "@mui/icons-material/Email";
-import PhoneIcon from "@mui/icons-material/Phone";
 import TranslateIcon from "@mui/icons-material/Translate";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
@@ -28,13 +37,26 @@ import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import GroupIcon from "@mui/icons-material/Group";
 import LabelIcon from "@mui/icons-material/Label";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
-import { fetchLeads, type Lead, type LeadsListResponse } from "@/services/api";
+import {
+    fetchLeads,
+    updateLeadStatus,
+    type Lead,
+    type LeadsListResponse,
+} from "@/services/api";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
-const AGENTS = ["Agent A", "Agent B", "Agent C"];
+const STATUSES = ["New", "Contacted", "Qualified", "Lost", "Won"];
+
+const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+    New: { bg: "rgba(96,165,250,0.12)", text: "#60a5fa", border: "rgba(96,165,250,0.3)" },
+    Contacted: { bg: "rgba(251,191,36,0.12)", text: "#fbbf24", border: "rgba(251,191,36,0.3)" },
+    Qualified: { bg: "rgba(52,211,153,0.12)", text: "#34d399", border: "rgba(52,211,153,0.3)" },
+    Lost: { bg: "rgba(248,113,113,0.12)", text: "#f87171", border: "rgba(248,113,113,0.3)" },
+    Won: { bg: "rgba(167,139,250,0.12)", text: "#a78bfa", border: "rgba(167,139,250,0.3)" },
+};
 
 const TAG_COLORS: Record<string, { bg: string; text: string; border: string }> = {
     pricing: { bg: "rgba(251,191,36,0.12)", text: "#fbbf24", border: "rgba(251,191,36,0.3)" },
@@ -51,14 +73,30 @@ const AGENT_COLORS: Record<string, string> = {
 };
 
 const LANG_FLAGS: Record<string, string> = {
-    english: "🇬🇧",
-    hindi: "🇮🇳",
-    spanish: "🇪🇸",
-    french: "🇫🇷",
-    german: "🇩🇪",
-    arabic: "🇸🇦",
-    portuguese: "🇧🇷",
-    chinese: "🇨🇳",
+    english: "🇬🇧", hindi: "🇮🇳", spanish: "🇪🇸", french: "🇫🇷",
+    german: "🇩🇪", arabic: "🇸🇦", portuguese: "🇧🇷", chinese: "🇨🇳",
+};
+
+/* ------------------------------------------------------------------ */
+/*  Shared styles                                                      */
+/* ------------------------------------------------------------------ */
+
+const cellSx = {
+    color: "rgba(255,255,255,0.75)",
+    borderBottom: "1px solid rgba(255,255,255,0.04)",
+    fontFamily: "var(--font-inter), sans-serif",
+    fontSize: "0.85rem",
+    py: 1.8,
+};
+
+const headerCellSx = {
+    ...cellSx,
+    color: "rgba(255,255,255,0.4)",
+    fontWeight: 600,
+    fontSize: "0.72rem",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.06em",
+    borderBottom: "1px solid rgba(255,255,255,0.08)",
 };
 
 /* ------------------------------------------------------------------ */
@@ -71,14 +109,21 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [search, setSearch] = useState("");
-    const [filterAgent, setFilterAgent] = useState<string | null>(null);
-    const [filterTag, setFilterTag] = useState<string | null>(null);
+    const [statusFilter, setStatusFilter] = useState<string>("");
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+    const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+    const [snackbar, setSnackbar] = useState<{
+        open: boolean;
+        severity: "success" | "error";
+        message: string;
+    }>({ open: false, severity: "success", message: "" });
+
+    /* ---- Fetch leads ---- */
     const loadLeads = useCallback(async () => {
         setLoading(true);
         setError(null);
-        const result = await fetchLeads(200, 0);
+        const result = await fetchLeads(200, 0, statusFilter || undefined);
         if (result.success && result.data) {
             const data = result.data as LeadsListResponse;
             setLeads(data.leads);
@@ -88,7 +133,7 @@ export default function DashboardPage() {
         }
         setLoading(false);
         setLastRefresh(new Date());
-    }, []);
+    }, [statusFilter]);
 
     useEffect(() => {
         loadLeads();
@@ -96,53 +141,48 @@ export default function DashboardPage() {
         return () => clearInterval(interval);
     }, [loadLeads]);
 
-    /* ---- Filtering ---- */
-    const filtered = leads.filter((lead) => {
-        if (filterAgent && lead.assigned_to !== filterAgent) return false;
-        if (filterTag && lead.tag !== filterTag) return false;
-        if (search) {
-            const q = search.toLowerCase();
-            return (
-                lead.name.toLowerCase().includes(q) ||
-                lead.email.toLowerCase().includes(q) ||
-                lead.original_message.toLowerCase().includes(q) ||
-                lead.translated_message.toLowerCase().includes(q)
-            );
+    /* ---- Status update handler ---- */
+    async function handleStatusChange(leadId: string, newStatus: string) {
+        setUpdatingId(leadId);
+        const result = await updateLeadStatus(leadId, newStatus);
+        if (result.success) {
+            setSnackbar({
+                open: true,
+                severity: "success",
+                message: `Status updated to "${newStatus}"`,
+            });
+            await loadLeads();
+        } else {
+            setSnackbar({
+                open: true,
+                severity: "error",
+                message: result.error || "Failed to update status",
+            });
         }
-        return true;
+        setUpdatingId(null);
+    }
+
+    /* ---- Filtering (client-side search) ---- */
+    const filtered = leads.filter((lead) => {
+        if (!search) return true;
+        const q = search.toLowerCase();
+        return (
+            lead.name.toLowerCase().includes(q) ||
+            lead.email.toLowerCase().includes(q) ||
+            (lead.translated_message || "").toLowerCase().includes(q) ||
+            (lead.tag || "").toLowerCase().includes(q) ||
+            (lead.assigned_to || "").toLowerCase().includes(q)
+        );
     });
 
     /* ---- Stats ---- */
     const statCards = [
-        {
-            label: "Total Leads",
-            value: total,
-            icon: <TrendingUpIcon />,
-            color: "#4361ee",
-        },
-        {
-            label: "Agents Active",
-            value: new Set(leads.map((l) => l.assigned_to).filter(Boolean)).size,
-            icon: <GroupIcon />,
-            color: "#34d399",
-        },
-        {
-            label: "Tags Used",
-            value: new Set(leads.map((l) => l.tag).filter(Boolean)).size,
-            icon: <LabelIcon />,
-            color: "#fbbf24",
-        },
-        {
-            label: "Latest",
-            value: leads.length > 0
-                ? timeAgo(leads[0].created_at)
-                : "—",
-            icon: <AccessTimeIcon />,
-            color: "#f87171",
-        },
+        { label: "Total Leads", value: total, icon: <TrendingUpIcon />, color: "#4361ee" },
+        { label: "Agents Active", value: new Set(leads.map((l) => l.assigned_to).filter(Boolean)).size, icon: <GroupIcon />, color: "#34d399" },
+        { label: "Tags Used", value: new Set(leads.map((l) => l.tag).filter(Boolean)).size, icon: <LabelIcon />, color: "#fbbf24" },
+        { label: "Latest", value: leads.length > 0 ? timeAgo(leads[0].created_at) : "—", icon: <AccessTimeIcon />, color: "#f87171" },
     ];
 
-    /* ---- Render ---- */
     return (
         <Box
             sx={{
@@ -163,36 +203,17 @@ export default function DashboardPage() {
                 }}
             >
                 <Container maxWidth="xl">
-                    <Box
-                        sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            py: 2,
-                        }}
-                    >
+                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 2 }}>
                         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                             <Button
                                 href="/"
                                 startIcon={<ArrowBackIcon />}
-                                sx={{
-                                    color: "rgba(255,255,255,0.6)",
-                                    textTransform: "none",
-                                    "&:hover": { color: "#fff", backgroundColor: "rgba(255,255,255,0.05)" },
-                                }}
+                                sx={{ color: "rgba(255,255,255,0.6)", textTransform: "none", "&:hover": { color: "#fff", backgroundColor: "rgba(255,255,255,0.05)" } }}
                             >
                                 Home
                             </Button>
-                            <Typography
-                                variant="h5"
-                                sx={{
-                                    fontWeight: 700,
-                                    color: "#fff",
-                                    letterSpacing: "-0.02em",
-                                    fontFamily: "var(--font-inter), sans-serif",
-                                }}
-                            >
-                                Agent Dashboard
+                            <Typography variant="h5" sx={{ fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>
+                                Lead CRM Dashboard
                             </Typography>
                             <Chip
                                 label="Live"
@@ -204,37 +225,24 @@ export default function DashboardPage() {
                                     fontWeight: 600,
                                     fontSize: "0.7rem",
                                     animation: "pulse 2s ease-in-out infinite",
-                                    "@keyframes pulse": {
-                                        "0%, 100%": { opacity: 1 },
-                                        "50%": { opacity: 0.6 },
-                                    },
+                                    "@keyframes pulse": { "0%, 100%": { opacity: 1 }, "50%": { opacity: 0.6 } },
                                 }}
                             />
                         </Box>
-
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                            <Typography
-                                variant="caption"
-                                sx={{ color: "rgba(255,255,255,0.35)", mr: 1 }}
-                            >
+                            <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.35)", mr: 1 }}>
                                 Updated {lastRefresh.toLocaleTimeString()}
                             </Typography>
                             <Tooltip title="Refresh now">
                                 <IconButton
                                     onClick={loadLeads}
                                     disabled={loading}
-                                    sx={{
-                                        color: "rgba(255,255,255,0.5)",
-                                        "&:hover": { color: "#fff" },
-                                    }}
+                                    sx={{ color: "rgba(255,255,255,0.5)", "&:hover": { color: "#fff" } }}
                                 >
                                     <RefreshIcon
                                         sx={{
                                             animation: loading ? "spin 1s linear infinite" : "none",
-                                            "@keyframes spin": {
-                                                from: { transform: "rotate(0deg)" },
-                                                to: { transform: "rotate(360deg)" },
-                                            },
+                                            "@keyframes spin": { from: { transform: "rotate(0deg)" }, to: { transform: "rotate(360deg)" } },
                                         }}
                                     />
                                 </IconButton>
@@ -246,14 +254,7 @@ export default function DashboardPage() {
 
             <Container maxWidth="xl" sx={{ mt: 4 }}>
                 {/* ---- Stat Cards ---- */}
-                <Box
-                    sx={{
-                        display: "grid",
-                        gridTemplateColumns: { xs: "1fr 1fr", md: "repeat(4, 1fr)" },
-                        gap: 2.5,
-                        mb: 4,
-                    }}
-                >
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", md: "repeat(4, 1fr)" }, gap: 2.5, mb: 4 }}>
                     {statCards.map((stat) => (
                         <Paper
                             key={stat.label}
@@ -265,49 +266,24 @@ export default function DashboardPage() {
                                 backgroundColor: "rgba(15,23,42,0.6)",
                                 backdropFilter: "blur(8px)",
                                 transition: "all 0.3s ease",
-                                "&:hover": {
-                                    border: `1px solid ${stat.color}33`,
-                                    transform: "translateY(-2px)",
-                                },
+                                "&:hover": { border: `1px solid ${stat.color}33`, transform: "translateY(-2px)" },
                             }}
                         >
                             <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
                                 <Box
                                     sx={{
-                                        width: 40,
-                                        height: 40,
-                                        borderRadius: "10px",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        backgroundColor: `${stat.color}18`,
-                                        color: stat.color,
+                                        width: 40, height: 40, borderRadius: "10px",
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                        backgroundColor: `${stat.color}18`, color: stat.color,
                                     }}
                                 >
                                     {stat.icon}
                                 </Box>
                                 <Box>
-                                    <Typography
-                                        variant="caption"
-                                        sx={{
-                                            color: "rgba(255,255,255,0.45)",
-                                            fontSize: "0.72rem",
-                                            textTransform: "uppercase",
-                                            letterSpacing: "0.05em",
-                                            fontWeight: 500,
-                                        }}
-                                    >
+                                    <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.45)", fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
                                         {stat.label}
                                     </Typography>
-                                    <Typography
-                                        variant="h5"
-                                        sx={{
-                                            fontWeight: 700,
-                                            color: "#fff",
-                                            lineHeight: 1.2,
-                                            fontSize: typeof stat.value === "string" ? "1rem" : "1.5rem",
-                                        }}
-                                    >
+                                    <Typography variant="h5" sx={{ fontWeight: 700, color: "#fff", lineHeight: 1.2, fontSize: typeof stat.value === "string" ? "1rem" : "1.5rem" }}>
                                         {stat.value}
                                     </Typography>
                                 </Box>
@@ -316,26 +292,17 @@ export default function DashboardPage() {
                     ))}
                 </Box>
 
-                {/* ---- Filters Bar ---- */}
+                {/* ---- Filter Bar ---- */}
                 <Paper
                     elevation={0}
                     sx={{
-                        p: 2.5,
-                        mb: 3,
-                        borderRadius: "12px",
+                        p: 2.5, mb: 3, borderRadius: "12px",
                         border: "1px solid rgba(255,255,255,0.06)",
                         backgroundColor: "rgba(15,23,42,0.6)",
                         backdropFilter: "blur(8px)",
                     }}
                 >
-                    <Box
-                        sx={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            alignItems: "center",
-                            gap: 2,
-                        }}
-                    >
+                    <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2 }}>
                         {/* Search */}
                         <TextField
                             size="small"
@@ -350,11 +317,9 @@ export default function DashboardPage() {
                                 ),
                             }}
                             sx={{
-                                minWidth: 220,
+                                minWidth: 240,
                                 "& .MuiOutlinedInput-root": {
-                                    borderRadius: "8px",
-                                    color: "#e2e8f0",
-                                    fontSize: "0.85rem",
+                                    borderRadius: "8px", color: "#e2e8f0", fontSize: "0.85rem",
                                     "& fieldset": { borderColor: "rgba(255,255,255,0.1)" },
                                     "&:hover fieldset": { borderColor: "rgba(255,255,255,0.2)" },
                                     "&.Mui-focused fieldset": { borderColor: "#4361ee" },
@@ -362,53 +327,56 @@ export default function DashboardPage() {
                             }}
                         />
 
-                        <Box sx={{ height: 24, width: 1, backgroundColor: "rgba(255,255,255,0.08)" }} />
+                        {/* Status filter dropdown */}
+                        <FormControl size="small" sx={{ minWidth: 160 }}>
+                            <InputLabel
+                                id="status-filter-label"
+                                sx={{ color: "rgba(255,255,255,0.4)", "&.Mui-focused": { color: "#4361ee" } }}
+                            >
+                                Filter by Status
+                            </InputLabel>
+                            <Select
+                                labelId="status-filter-label"
+                                id="status-filter"
+                                value={statusFilter}
+                                label="Filter by Status"
+                                onChange={(e: SelectChangeEvent) => setStatusFilter(e.target.value)}
+                                sx={{
+                                    borderRadius: "8px", color: "#e2e8f0", fontSize: "0.85rem",
+                                    "& .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(255,255,255,0.1)" },
+                                    "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(255,255,255,0.2)" },
+                                    "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#4361ee" },
+                                    "& .MuiSvgIcon-root": { color: "rgba(255,255,255,0.4)" },
+                                }}
+                                MenuProps={{
+                                    PaperProps: {
+                                        sx: {
+                                            backgroundColor: "#1e293b",
+                                            border: "1px solid rgba(255,255,255,0.1)",
+                                            borderRadius: "8px",
+                                            "& .MuiMenuItem-root": {
+                                                color: "#e2e8f0", fontSize: "0.85rem",
+                                                "&:hover": { backgroundColor: "rgba(67,97,238,0.15)" },
+                                                "&.Mui-selected": { backgroundColor: "rgba(67,97,238,0.25)" },
+                                            },
+                                        },
+                                    },
+                                }}
+                            >
+                                <MenuItem value="">All Statuses</MenuItem>
+                                {STATUSES.map((s) => (
+                                    <MenuItem key={s} value={s}>
+                                        <Box component="span" sx={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", backgroundColor: STATUS_COLORS[s]?.text || "#94a3b8", mr: 1 }} />
+                                        {s}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
 
-                        {/* Agent filters */}
-                        <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.4)", fontWeight: 500 }}>
-                            Agent:
+                        {/* Results count */}
+                        <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.3)", ml: "auto", fontWeight: 500 }}>
+                            {filtered.length} of {total} leads
                         </Typography>
-                        <Chip
-                            label="All"
-                            size="small"
-                            onClick={() => setFilterAgent(null)}
-                            sx={chipFilterSx(filterAgent === null, "#4361ee")}
-                        />
-                        {AGENTS.map((agent) => (
-                            <Chip
-                                key={agent}
-                                label={agent}
-                                size="small"
-                                onClick={() =>
-                                    setFilterAgent(filterAgent === agent ? null : agent)
-                                }
-                                sx={chipFilterSx(filterAgent === agent, AGENT_COLORS[agent])}
-                            />
-                        ))}
-
-                        <Box sx={{ height: 24, width: 1, backgroundColor: "rgba(255,255,255,0.08)" }} />
-
-                        {/* Tag filters */}
-                        <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.4)", fontWeight: 500 }}>
-                            Tag:
-                        </Typography>
-                        <Chip
-                            label="All"
-                            size="small"
-                            onClick={() => setFilterTag(null)}
-                            sx={chipFilterSx(filterTag === null, "#4361ee")}
-                        />
-                        {Object.keys(TAG_COLORS).map((tag) => (
-                            <Chip
-                                key={tag}
-                                label={tag}
-                                size="small"
-                                onClick={() =>
-                                    setFilterTag(filterTag === tag ? null : tag)
-                                }
-                                sx={chipFilterSx(filterTag === tag, TAG_COLORS[tag].text)}
-                            />
-                        ))}
                     </Box>
                 </Paper>
 
@@ -417,10 +385,8 @@ export default function DashboardPage() {
                     <Alert
                         severity="error"
                         sx={{
-                            mb: 3,
-                            borderRadius: "10px",
-                            backgroundColor: "rgba(248,113,113,0.1)",
-                            color: "#f87171",
+                            mb: 3, borderRadius: "10px",
+                            backgroundColor: "rgba(248,113,113,0.1)", color: "#f87171",
                             border: "1px solid rgba(248,113,113,0.2)",
                         }}
                     >
@@ -428,287 +394,242 @@ export default function DashboardPage() {
                     </Alert>
                 )}
 
-                {/* ---- Loading state ---- */}
+                {/* ---- Loading ---- */}
                 {loading && leads.length === 0 && (
                     <Box sx={{ textAlign: "center", py: 10 }}>
                         <CircularProgress sx={{ color: "#4361ee" }} />
-                        <Typography sx={{ color: "rgba(255,255,255,0.4)", mt: 2 }}>
-                            Loading leads…
-                        </Typography>
+                        <Typography sx={{ color: "rgba(255,255,255,0.4)", mt: 2 }}>Loading leads…</Typography>
                     </Box>
                 )}
 
-                {/* ---- Empty state ---- */}
+                {/* ---- Empty ---- */}
                 {!loading && filtered.length === 0 && (
                     <Box sx={{ textAlign: "center", py: 10 }}>
                         <Typography variant="h6" sx={{ color: "rgba(255,255,255,0.3)", mb: 1 }}>
                             {leads.length === 0 ? "No leads yet" : "No leads match your filters"}
                         </Typography>
                         <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.2)" }}>
-                            {leads.length === 0
-                                ? "Submit a lead from the form to see it appear here."
-                                : "Try adjusting your search or filter criteria."}
+                            {leads.length === 0 ? "Submit a lead from the form to see it here." : "Try adjusting your search or filter."}
                         </Typography>
                     </Box>
                 )}
 
-                {/* ---- Results count ---- */}
+                {/* ---- Data Table ---- */}
                 {filtered.length > 0 && (
-                    <Typography
-                        variant="body2"
-                        sx={{ color: "rgba(255,255,255,0.3)", mb: 2, fontWeight: 500 }}
+                    <TableContainer
+                        component={Paper}
+                        elevation={0}
+                        sx={{
+                            borderRadius: "12px",
+                            border: "1px solid rgba(255,255,255,0.06)",
+                            backgroundColor: "rgba(15,23,42,0.6)",
+                            backdropFilter: "blur(8px)",
+                            overflow: "hidden",
+                        }}
                     >
-                        Showing {filtered.length} of {total} leads
-                    </Typography>
+                        <Table>
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell sx={headerCellSx}>Name</TableCell>
+                                    <TableCell sx={headerCellSx}>Language</TableCell>
+                                    <TableCell sx={{ ...headerCellSx, minWidth: 250 }}>Translated Message</TableCell>
+                                    <TableCell sx={headerCellSx}>Tag</TableCell>
+                                    <TableCell sx={headerCellSx}>Assigned To</TableCell>
+                                    <TableCell sx={{ ...headerCellSx, minWidth: 160 }}>Status</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {filtered.map((lead) => {
+                                    const tagStyle = TAG_COLORS[lead.tag || "general"] || TAG_COLORS.general;
+                                    const statusStyle = STATUS_COLORS[lead.status] || STATUS_COLORS.New;
+                                    const agentColor = AGENT_COLORS[lead.assigned_to || ""] || "#94a3b8";
+                                    const isUpdating = updatingId === lead.id;
+
+                                    return (
+                                        <TableRow
+                                            key={lead.id}
+                                            sx={{
+                                                transition: "background-color 0.2s ease",
+                                                "&:hover": { backgroundColor: "rgba(255,255,255,0.02)" },
+                                                opacity: isUpdating ? 0.6 : 1,
+                                            }}
+                                        >
+                                            {/* Name */}
+                                            <TableCell sx={cellSx}>
+                                                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                                                    <Box
+                                                        sx={{
+                                                            width: 34, height: 34, borderRadius: "8px",
+                                                            background: `linear-gradient(135deg, ${agentColor}30, ${agentColor}10)`,
+                                                            border: `1px solid ${agentColor}40`,
+                                                            display: "flex", alignItems: "center", justifyContent: "center",
+                                                            fontWeight: 700, color: agentColor, fontSize: "0.8rem",
+                                                            flexShrink: 0,
+                                                        }}
+                                                    >
+                                                        {lead.name.charAt(0).toUpperCase()}
+                                                    </Box>
+                                                    <Box>
+                                                        <Typography variant="body2" sx={{ fontWeight: 600, color: "#f1f5f9", lineHeight: 1.3 }}>
+                                                            {lead.name}
+                                                        </Typography>
+                                                        <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.35)", fontSize: "0.7rem" }}>
+                                                            {lead.email}
+                                                        </Typography>
+                                                    </Box>
+                                                </Box>
+                                            </TableCell>
+
+                                            {/* Language */}
+                                            <TableCell sx={cellSx}>
+                                                <Chip
+                                                    icon={<TranslateIcon sx={{ fontSize: "13px !important" }} />}
+                                                    label={`${LANG_FLAGS[lead.language] || "🌐"} ${capitalize(lead.language)}`}
+                                                    size="small"
+                                                    sx={{
+                                                        backgroundColor: "rgba(96,165,250,0.1)", color: "#60a5fa",
+                                                        border: "1px solid rgba(96,165,250,0.2)", fontWeight: 500,
+                                                        fontSize: "0.72rem", "& .MuiChip-icon": { color: "#60a5fa" },
+                                                    }}
+                                                />
+                                            </TableCell>
+
+                                            {/* Translated Message */}
+                                            <TableCell sx={{ ...cellSx, maxWidth: 350 }}>
+                                                <Typography
+                                                    variant="body2"
+                                                    sx={{
+                                                        color: "rgba(255,255,255,0.6)",
+                                                        fontSize: "0.82rem",
+                                                        lineHeight: 1.5,
+                                                        overflow: "hidden",
+                                                        textOverflow: "ellipsis",
+                                                        display: "-webkit-box",
+                                                        WebkitLineClamp: 2,
+                                                        WebkitBoxOrient: "vertical",
+                                                    }}
+                                                >
+                                                    {lead.translated_message}
+                                                </Typography>
+                                            </TableCell>
+
+                                            {/* Tag */}
+                                            <TableCell sx={cellSx}>
+                                                <Chip
+                                                    icon={<LocalOfferIcon sx={{ fontSize: "13px !important" }} />}
+                                                    label={capitalize(lead.tag || "general")}
+                                                    size="small"
+                                                    sx={{
+                                                        backgroundColor: tagStyle.bg, color: tagStyle.text,
+                                                        border: `1px solid ${tagStyle.border}`,
+                                                        fontWeight: 600, fontSize: "0.72rem",
+                                                        "& .MuiChip-icon": { color: tagStyle.text },
+                                                    }}
+                                                />
+                                            </TableCell>
+
+                                            {/* Assigned To */}
+                                            <TableCell sx={cellSx}>
+                                                {lead.assigned_to && (
+                                                    <Chip
+                                                        icon={<AssignmentIndIcon sx={{ fontSize: "13px !important" }} />}
+                                                        label={lead.assigned_to}
+                                                        size="small"
+                                                        sx={{
+                                                            backgroundColor: `${agentColor}15`, color: agentColor,
+                                                            border: `1px solid ${agentColor}35`,
+                                                            fontWeight: 600, fontSize: "0.72rem",
+                                                            "& .MuiChip-icon": { color: agentColor },
+                                                        }}
+                                                    />
+                                                )}
+                                            </TableCell>
+
+                                            {/* Status (editable dropdown) */}
+                                            <TableCell sx={cellSx}>
+                                                <Select
+                                                    size="small"
+                                                    value={lead.status}
+                                                    disabled={isUpdating}
+                                                    onChange={(e: SelectChangeEvent) =>
+                                                        handleStatusChange(lead.id, e.target.value)
+                                                    }
+                                                    sx={{
+                                                        minWidth: 130,
+                                                        borderRadius: "8px",
+                                                        fontSize: "0.8rem",
+                                                        fontWeight: 600,
+                                                        color: statusStyle.text,
+                                                        backgroundColor: statusStyle.bg,
+                                                        "& .MuiOutlinedInput-notchedOutline": {
+                                                            borderColor: statusStyle.border,
+                                                        },
+                                                        "&:hover .MuiOutlinedInput-notchedOutline": {
+                                                            borderColor: statusStyle.text,
+                                                        },
+                                                        "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+                                                            borderColor: statusStyle.text,
+                                                        },
+                                                        "& .MuiSvgIcon-root": { color: statusStyle.text },
+                                                    }}
+                                                    MenuProps={{
+                                                        PaperProps: {
+                                                            sx: {
+                                                                backgroundColor: "#1e293b",
+                                                                border: "1px solid rgba(255,255,255,0.1)",
+                                                                borderRadius: "8px",
+                                                                "& .MuiMenuItem-root": {
+                                                                    color: "#e2e8f0", fontSize: "0.82rem",
+                                                                    "&:hover": { backgroundColor: "rgba(67,97,238,0.15)" },
+                                                                    "&.Mui-selected": { backgroundColor: "rgba(67,97,238,0.25)" },
+                                                                },
+                                                            },
+                                                        },
+                                                    }}
+                                                >
+                                                    {STATUSES.map((s) => {
+                                                        const sStyle = STATUS_COLORS[s];
+                                                        return (
+                                                            <MenuItem key={s} value={s}>
+                                                                <Box
+                                                                    component="span"
+                                                                    sx={{
+                                                                        display: "inline-block", width: 8, height: 8,
+                                                                        borderRadius: "50%", backgroundColor: sStyle.text, mr: 1,
+                                                                    }}
+                                                                />
+                                                                {s}
+                                                            </MenuItem>
+                                                        );
+                                                    })}
+                                                </Select>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
                 )}
-
-                {/* ---- Lead Cards ---- */}
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    {filtered.map((lead) => (
-                        <LeadCard key={lead.id} lead={lead} />
-                    ))}
-                </Box>
             </Container>
+
+            {/* ---- Snackbar ---- */}
+            <Snackbar
+                open={snackbar.open}
+                autoHideDuration={3000}
+                onClose={() => setSnackbar((p) => ({ ...p, open: false }))}
+                anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+            >
+                <Alert
+                    onClose={() => setSnackbar((p) => ({ ...p, open: false }))}
+                    severity={snackbar.severity}
+                    variant="filled"
+                    sx={{ borderRadius: "8px" }}
+                >
+                    {snackbar.message}
+                </Alert>
+            </Snackbar>
         </Box>
-    );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Lead Card                                                          */
-/* ------------------------------------------------------------------ */
-
-function LeadCard({ lead }: { lead: Lead }) {
-    const tagStyle = TAG_COLORS[lead.tag || "general"] || TAG_COLORS.general;
-    const agentColor = AGENT_COLORS[lead.assigned_to || ""] || "#94a3b8";
-
-    return (
-        <Paper
-            elevation={0}
-            sx={{
-                p: 0,
-                borderRadius: "12px",
-                border: "1px solid rgba(255,255,255,0.06)",
-                backgroundColor: "rgba(15,23,42,0.5)",
-                backdropFilter: "blur(8px)",
-                overflow: "hidden",
-                transition: "all 0.25s ease",
-                "&:hover": {
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    transform: "translateY(-1px)",
-                    boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
-                },
-            }}
-        >
-            {/* Top colored bar */}
-            <Box sx={{ height: 3, background: `linear-gradient(90deg, ${agentColor}, ${tagStyle.text})` }} />
-
-            <Box sx={{ p: 3 }}>
-                {/* ---- Header row ---- */}
-                <Box
-                    sx={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        flexWrap: "wrap",
-                        gap: 1.5,
-                        mb: 2,
-                    }}
-                >
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                        {/* Avatar placeholder */}
-                        <Box
-                            sx={{
-                                width: 42,
-                                height: 42,
-                                borderRadius: "10px",
-                                background: `linear-gradient(135deg, ${agentColor}30, ${agentColor}10)`,
-                                border: `1px solid ${agentColor}40`,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontWeight: 700,
-                                color: agentColor,
-                                fontSize: "1rem",
-                            }}
-                        >
-                            {lead.name.charAt(0).toUpperCase()}
-                        </Box>
-                        <Box>
-                            <Typography
-                                variant="subtitle1"
-                                sx={{ fontWeight: 600, color: "#f1f5f9", lineHeight: 1.3 }}
-                            >
-                                {lead.name}
-                            </Typography>
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
-                                <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
-                                    <EmailIcon sx={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }} />
-                                    <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.45)" }}>
-                                        {lead.email}
-                                    </Typography>
-                                </Box>
-                                {lead.phone && (
-                                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
-                                        <PhoneIcon sx={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }} />
-                                        <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.45)" }}>
-                                            {lead.phone}
-                                        </Typography>
-                                    </Box>
-                                )}
-                            </Box>
-                        </Box>
-                    </Box>
-
-                    {/* Chips */}
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
-                        {/* Language */}
-                        <Chip
-                            icon={<TranslateIcon sx={{ fontSize: "14px !important" }} />}
-                            label={`${LANG_FLAGS[lead.language] || "🌐"} ${capitalize(lead.language)}`}
-                            size="small"
-                            sx={{
-                                backgroundColor: "rgba(96,165,250,0.1)",
-                                color: "#60a5fa",
-                                border: "1px solid rgba(96,165,250,0.2)",
-                                fontWeight: 500,
-                                fontSize: "0.72rem",
-                                "& .MuiChip-icon": { color: "#60a5fa" },
-                            }}
-                        />
-
-                        {/* Tag */}
-                        <Chip
-                            icon={<LocalOfferIcon sx={{ fontSize: "14px !important" }} />}
-                            label={capitalize(lead.tag || "general")}
-                            size="small"
-                            sx={{
-                                backgroundColor: tagStyle.bg,
-                                color: tagStyle.text,
-                                border: `1px solid ${tagStyle.border}`,
-                                fontWeight: 600,
-                                fontSize: "0.72rem",
-                                "& .MuiChip-icon": { color: tagStyle.text },
-                            }}
-                        />
-
-                        {/* Assigned Agent */}
-                        {lead.assigned_to && (
-                            <Chip
-                                icon={<AssignmentIndIcon sx={{ fontSize: "14px !important" }} />}
-                                label={lead.assigned_to}
-                                size="small"
-                                sx={{
-                                    backgroundColor: `${agentColor}15`,
-                                    color: agentColor,
-                                    border: `1px solid ${agentColor}35`,
-                                    fontWeight: 600,
-                                    fontSize: "0.72rem",
-                                    "& .MuiChip-icon": { color: agentColor },
-                                }}
-                            />
-                        )}
-
-                        {/* Status */}
-                        <Chip
-                            label={lead.status}
-                            size="small"
-                            sx={{
-                                backgroundColor: "rgba(52,211,153,0.1)",
-                                color: "#34d399",
-                                border: "1px solid rgba(52,211,153,0.2)",
-                                fontWeight: 600,
-                                fontSize: "0.72rem",
-                            }}
-                        />
-                    </Box>
-                </Box>
-
-                {/* ---- Messages ---- */}
-                <Box
-                    sx={{
-                        display: "grid",
-                        gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-                        gap: 2,
-                    }}
-                >
-                    <Box
-                        sx={{
-                            p: 2,
-                            borderRadius: "8px",
-                            backgroundColor: "rgba(255,255,255,0.03)",
-                            border: "1px solid rgba(255,255,255,0.05)",
-                        }}
-                    >
-                        <Typography
-                            variant="caption"
-                            sx={{
-                                color: "rgba(255,255,255,0.35)",
-                                fontWeight: 600,
-                                textTransform: "uppercase",
-                                letterSpacing: "0.05em",
-                                fontSize: "0.65rem",
-                                display: "block",
-                                mb: 0.5,
-                            }}
-                        >
-                            Original Message
-                        </Typography>
-                        <Typography
-                            variant="body2"
-                            sx={{ color: "rgba(255,255,255,0.7)", lineHeight: 1.6, fontSize: "0.85rem" }}
-                        >
-                            {lead.original_message}
-                        </Typography>
-                    </Box>
-
-                    <Box
-                        sx={{
-                            p: 2,
-                            borderRadius: "8px",
-                            backgroundColor: "rgba(67,97,238,0.04)",
-                            border: "1px solid rgba(67,97,238,0.1)",
-                        }}
-                    >
-                        <Typography
-                            variant="caption"
-                            sx={{
-                                color: "rgba(255,255,255,0.35)",
-                                fontWeight: 600,
-                                textTransform: "uppercase",
-                                letterSpacing: "0.05em",
-                                fontSize: "0.65rem",
-                                display: "block",
-                                mb: 0.5,
-                            }}
-                        >
-                            Translated (English)
-                        </Typography>
-                        <Typography
-                            variant="body2"
-                            sx={{ color: "rgba(255,255,255,0.7)", lineHeight: 1.6, fontSize: "0.85rem" }}
-                        >
-                            {lead.translated_message}
-                        </Typography>
-                    </Box>
-                </Box>
-
-                {/* ---- Footer ---- */}
-                <Box
-                    sx={{
-                        display: "flex",
-                        justifyContent: "flex-end",
-                        mt: 2,
-                    }}
-                >
-                    <Typography
-                        variant="caption"
-                        sx={{ color: "rgba(255,255,255,0.25)", fontSize: "0.7rem" }}
-                    >
-                        {new Date(lead.created_at).toLocaleString()}
-                    </Typography>
-                </Box>
-            </Box>
-        </Paper>
     );
 }
 
@@ -727,23 +648,5 @@ function timeAgo(dateStr: string): string {
     if (mins < 60) return `${mins}m ago`;
     const hrs = Math.floor(mins / 60);
     if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    return `${days}d ago`;
-}
-
-function chipFilterSx(active: boolean, color: string) {
-    return {
-        cursor: "pointer",
-        fontWeight: 600,
-        fontSize: "0.72rem",
-        transition: "all 0.2s ease",
-        backgroundColor: active ? `${color}20` : "transparent",
-        color: active ? color : "rgba(255,255,255,0.4)",
-        border: `1px solid ${active ? `${color}40` : "rgba(255,255,255,0.1)"}`,
-        "&:hover": {
-            backgroundColor: `${color}15`,
-            color: color,
-            borderColor: `${color}30`,
-        },
-    };
+    return `${Math.floor(hrs / 24)}d ago`;
 }

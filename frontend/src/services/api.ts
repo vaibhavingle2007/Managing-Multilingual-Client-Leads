@@ -118,3 +118,38 @@ export async function fetchLeads(
         return { success: false, error: message };
     }
 }
+
+/**
+ * Update a lead's status.
+ *
+ * PATCH /leads/{id}
+ */
+export async function updateLeadStatus(
+    leadId: string,
+    status: string
+): Promise<ApiResponse> {
+    try {
+        const response = await fetch(`${API_BASE_URL}/leads/${leadId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => null);
+            return {
+                success: false,
+                error:
+                    errorBody?.detail ||
+                    `Request failed with status ${response.status}`,
+            };
+        }
+
+        const data = await response.json();
+        return { success: true, data };
+    } catch (err) {
+        const message =
+            err instanceof Error ? err.message : "Network error — is the backend running?";
+        return { success: false, error: message };
+    }
+}
