@@ -1,16 +1,10 @@
 /**
- * Components Directory
- *
- * Place reusable UI components here.
- * Each component should have its own file or folder.
- *
- * Example structure:
- *   components/
- *   ├── Navbar.tsx
- *   ├── Footer.tsx
- *   └── LeadCard/
- *       ├── LeadCard.tsx
- *       └── LeadCard.styles.ts
+ * Components Directory — Barrel Export
  */
 
-export { };
+export { default as HeroSection } from "./HeroSection";
+export { default as ProblemSection } from "./ProblemSection";
+export { default as SolutionSection } from "./SolutionSection";
+export { default as HowItWorksSection } from "./HowItWorksSection";
+export { default as CTASection } from "./CTASection";
+export { default as Footer } from "./Footer";
