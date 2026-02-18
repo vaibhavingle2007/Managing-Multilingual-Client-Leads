@@ -10,6 +10,7 @@
 | Component | URL | Status |
 | :--- | :--- | :--- |
 | **Frontend** | [https://frontend-gamma-five-83.vercel.app](https://frontend-gamma-five-83.vercel.app) | 🟢 Live |
+|   **Dashboard**           |[https://frontend-gamma-five-83.vercel.app](https://frontend-gamma-five-83.vercel.app/dashboard) | 🟢 Live |
 | **Backend API** | [https://backend-psi-five-44.vercel.app/docs](https://backend-psi-five-44.vercel.app/docs) | 🟢 Live |
 
 ---
