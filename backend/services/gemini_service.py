@@ -11,6 +11,7 @@ functions return sensible defaults so the lead is never lost.
 
 import os
 import logging
+import time
 
 from google import genai
 
@@ -56,6 +57,33 @@ def _get_client() -> genai.Client:
     return genai.Client(api_key=_get_api_key())
 
 
+# Use flash-lite for more generous free-tier quota
+GEMINI_MODEL = "gemini-2.5-flash"
+MAX_RETRIES = 3
+
+
+def _generate_with_retry(client: genai.Client, prompt: str) -> str:
+    """Call Gemini with exponential backoff on 429 rate-limit errors."""
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+            )
+            return response.text.strip()
+        except Exception as exc:
+            if "429" in str(exc) and attempt < MAX_RETRIES - 1:
+                wait = 2 ** (attempt + 1)  # 2s, 4s, 8s
+                logger.warning(
+                    "Rate limited (attempt %d/%d), retrying in %ds…",
+                    attempt + 1, MAX_RETRIES, wait,
+                )
+                time.sleep(wait)
+            else:
+                raise
+    return ""  # should never reach here
+
+
 # ------------------------------------------------------------------ #
 #  Language Detection                                                  #
 # ------------------------------------------------------------------ #
@@ -90,11 +118,7 @@ async def detect_language(text: str) -> dict[str, str]:
 
     try:
         client = _get_client()
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        raw = response.text.strip().lower().rstrip(".")
+        raw = _generate_with_retry(client, prompt).lower().rstrip(".")
 
         # Validate against supported set
         detected = raw if raw in SUPPORTED_LANGUAGES else "english"
@@ -139,10 +163,12 @@ async def translate_to_english(text: str, source_language: str = "") -> dict[str
         return _fallback_translation(text, source_language)
 
     if not text or not text.strip():
+        logger.warning("Empty text — skipping translation")
         return _fallback_translation(text, source_language)
 
     # If already English, skip the API call
     if source_language.lower() == "english":
+        logger.info("Source is English — skipping translation")
         return {
             "original_text": text,
             "translated_text": text,
@@ -156,17 +182,18 @@ async def translate_to_english(text: str, source_language: str = "") -> dict[str
         f"Text: \"{text.strip()}\""
     )
 
+    logger.info("Calling Gemini for translation from '%s' to English", source_language)
+
     try:
         client = _get_client()
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        translated = response.text.strip()
+        translated = _generate_with_retry(client, prompt)
 
         # Strip surrounding quotes if Gemini wraps the response
         if translated.startswith('"') and translated.endswith('"'):
             translated = translated[1:-1]
+
+        logger.info("Gemini translation result: '%s' → '%s'",
+                    text[:50], translated[:50])
 
         return {
             "original_text": text,

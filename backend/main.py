@@ -136,11 +136,13 @@ async def create_lead(lead: LeadRequest):
     lang_code = detection["language_code"]
     confidence = detection["confidence"]
 
-    # If frontend sent a language hint, prefer it when confidence is low
-    if lead.language and confidence == "low":
+    # If frontend sent a language hint, use it ONLY when Gemini
+    # defaulted to English with low confidence (i.e. couldn't detect).
+    # If Gemini detected a non-English language, trust that result.
+    if lead.language and confidence == "low" and detected_lang == "english":
         from services.gemini_service import LANG_CODE_MAP
         hint = LANG_CODE_MAP.get(lead.language, "")
-        if hint:
+        if hint and hint != "english":
             detected_lang = hint
             lang_code = lead.language
             confidence = "hint"
