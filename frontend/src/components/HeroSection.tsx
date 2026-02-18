@@ -200,29 +200,7 @@ export default function HeroSection() {
                             View Demo
                         </Button>
 
-                        <Button
-                            id="hero-dashboard"
-                            variant="outlined"
-                            size="large"
-                            startIcon={<DashboardIcon />}
-                            href="/dashboard"
-                            sx={{
-                                px: 3.5,
-                                py: 1.4,
-                                borderRadius: "8px",
-                                textTransform: "none",
-                                fontWeight: 600,
-                                fontSize: "0.95rem",
-                                color: "#34d399",
-                                borderColor: "rgba(52,211,153,0.35)",
-                                "&:hover": {
-                                    borderColor: "rgba(52,211,153,0.6)",
-                                    backgroundColor: "rgba(52,211,153,0.08)",
-                                },
-                            }}
-                        >
-                            Agent Dashboard
-                        </Button>
+
                     </Box>
                 </Box>
             </Container>
