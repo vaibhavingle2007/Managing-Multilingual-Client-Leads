@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useEffect, type FormEvent, type ChangeEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
     Box,
     Button,
+    Chip,
     CircularProgress,
     Container,
     FormControl,
+    IconButton,
     InputLabel,
     MenuItem,
     Paper,
@@ -14,11 +17,14 @@ import {
     Snackbar,
     Alert,
     TextField,
+    Tooltip,
     Typography,
     type SelectChangeEvent,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import TranslateIcon from "@mui/icons-material/Translate";
+import LogoutIcon from "@mui/icons-material/Logout";
+import InboxIcon from "@mui/icons-material/Inbox";
 import { submitLead, type LeadPayload } from "@/services/api";
 import {
     SUPPORTED_LANGUAGES,
@@ -26,6 +32,7 @@ import {
     getTranslations,
     detectBrowserLanguage,
 } from "@/lib/translations";
+import { useAuth } from "@/contexts/AuthContext";
 
 /* ------------------------------------------------------------------ */
 /*  Validation                                                         */
@@ -93,6 +100,9 @@ const INITIAL_VALUES: FormValues = {
 };
 
 export default function SubmitLeadPage() {
+    const { user, loading: authLoading, signOut } = useAuth();
+    const router = useRouter();
+
     /* ---- state ---- */
     const [lang, setLang] = useState<SupportedLang>("en");
     const [values, setValues] = useState<FormValues>(INITIAL_VALUES);
@@ -109,10 +119,36 @@ export default function SubmitLeadPage() {
     const t = getTranslations(lang);
     const isRTL = lang === "ar";
 
+    /* ---- auth guard ---- */
+    useEffect(() => {
+        if (!authLoading && !user) {
+            router.replace("/login");
+        }
+    }, [authLoading, user, router]);
+
+    /* ---- pre-fill from Firebase profile ---- */
+    useEffect(() => {
+        if (user) {
+            setValues((prev) => ({
+                ...prev,
+                name: prev.name || user.displayName || "",
+                email: prev.email || user.email || "",
+            }));
+        }
+    }, [user]);
+
     /* ---- auto-detect browser language on mount ---- */
     useEffect(() => {
         setLang(detectBrowserLanguage());
     }, []);
+
+    if (authLoading || !user) {
+        return (
+            <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(145deg, #000214 0%, #0f172a 50%, #0c1222 100%)" }}>
+                <CircularProgress sx={{ color: "#4361ee" }} />
+            </Box>
+        );
+    }
 
     /* ---- handlers ---- */
 
@@ -208,6 +244,7 @@ export default function SubmitLeadPage() {
             sx={{
                 minHeight: "100vh",
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
                 background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
@@ -215,6 +252,27 @@ export default function SubmitLeadPage() {
                 py: 6,
             }}
         >
+            {/* ---- User Bar ---- */}
+            <Box sx={{ width: "100%", maxWidth: 600, mb: 2, display: "flex", alignItems: "center", justifyContent: "space-between", px: 1 }}>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.5)" }}>
+                    Signed in as <strong style={{ color: "#e2e8f0" }}>{user.displayName || user.email}</strong>
+                </Typography>
+                <Box sx={{ display: "flex", gap: 1 }}>
+                    <Button
+                        href="/my-leads"
+                        size="small"
+                        startIcon={<InboxIcon />}
+                        sx={{ color: "rgba(255,255,255,0.5)", textTransform: "none", fontSize: "0.8rem", "&:hover": { color: "#4361ee" } }}
+                    >
+                        My Leads
+                    </Button>
+                    <Tooltip title="Sign out">
+                        <IconButton onClick={signOut} size="small" sx={{ color: "rgba(255,255,255,0.4)", "&:hover": { color: "#f87171" } }}>
+                            <LogoutIcon fontSize="small" />
+                        </IconButton>
+                    </Tooltip>
+                </Box>
+            </Box>
             <Container maxWidth="sm">
                 <Paper
                     elevation={0}

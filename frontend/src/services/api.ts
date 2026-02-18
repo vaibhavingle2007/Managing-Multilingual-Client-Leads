@@ -153,3 +153,77 @@ export async function updateLeadStatus(
         return { success: false, error: message };
     }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Reply types                                                        */
+/* ------------------------------------------------------------------ */
+
+export interface Reply {
+    id: string;
+    lead_id: string;
+    agent_email: string;
+    agent_name: string;
+    original_message: string;
+    translated_message: string;
+    target_language: string;
+    created_at: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Reply API                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Send a reply to a lead (agent action).
+ *
+ * POST /leads/{id}/replies
+ */
+export async function sendReply(
+    leadId: string,
+    message: string,
+    agentEmail: string,
+    agentName: string = ""
+): Promise<ApiResponse> {
+    try {
+        const response = await fetch(`${API_BASE_URL}/leads/${leadId}/replies`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                message,
+                agent_email: agentEmail,
+                agent_name: agentName,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => null);
+            return {
+                success: false,
+                error: errorBody?.detail || `Request failed with status ${response.status}`,
+            };
+        }
+
+        const data = await response.json();
+        return { success: true, data };
+    } catch (err) {
+        const message_ =
+            err instanceof Error ? err.message : "Network error — is the backend running?";
+        return { success: false, error: message_ };
+    }
+}
+
+/**
+ * Fetch all replies for a lead.
+ *
+ * GET /leads/{id}/replies
+ */
+export async function fetchReplies(leadId: string): Promise<Reply[]> {
+    try {
+        const response = await fetch(`${API_BASE_URL}/leads/${leadId}/replies`);
+        if (!response.ok) return [];
+        const data = await response.json();
+        return data.replies || [];
+    } catch {
+        return [];
+    }
+}

@@ -159,3 +159,72 @@ async def update_lead_status(lead_id: str, status: str) -> dict[str, Any]:
     except Exception as exc:
         logger.error("Failed to update lead status: %s", exc)
         raise RuntimeError(f"Database update failed: {exc}") from exc
+
+
+# ------------------------------------------------------------------ #
+#  Reply Operations                                                    #
+# ------------------------------------------------------------------ #
+
+REPLIES_TABLE = "replies"
+
+
+async def get_lead_by_id(lead_id: str) -> dict[str, Any] | None:
+    """Fetch a single lead by its UUID."""
+    try:
+        client = get_supabase()
+        response = (
+            client.table(LEADS_TABLE)
+            .select("*")
+            .eq("id", lead_id)
+            .execute()
+        )
+        if response.data and len(response.data) > 0:
+            return response.data[0]
+        return None
+    except Exception as exc:
+        logger.error("Failed to fetch lead %s: %s", lead_id, exc)
+        return None
+
+
+async def insert_reply(reply_data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Insert a new reply into the `replies` table.
+
+    Args:
+        reply_data: Dictionary with reply fields.
+
+    Returns:
+        The inserted row as a dictionary.
+    """
+    try:
+        client = get_supabase()
+        response = (
+            client.table(REPLIES_TABLE)
+            .insert(reply_data)
+            .execute()
+        )
+        if response.data and len(response.data) > 0:
+            logger.info("Reply inserted: %s", response.data[0].get("id", "?"))
+            return response.data[0]
+        raise RuntimeError("Insert returned empty data")
+    except Exception as exc:
+        logger.error("Failed to insert reply: %s", exc)
+        raise RuntimeError(f"Database insert failed: {exc}") from exc
+
+
+async def get_replies_for_lead(lead_id: str) -> list[dict[str, Any]]:
+    """Retrieve all replies for a given lead, ordered by creation date."""
+    try:
+        client = get_supabase()
+        response = (
+            client.table(REPLIES_TABLE)
+            .select("*")
+            .eq("lead_id", lead_id)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        return response.data or []
+    except Exception as exc:
+        logger.error("Failed to fetch replies for lead %s: %s", lead_id, exc)
+        return []
+

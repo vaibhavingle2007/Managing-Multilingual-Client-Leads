@@ -11,8 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from services.gemini_service import detect_language, translate_to_english
-from services.supabase_service import insert_lead, get_all_leads, get_lead_count, update_lead_status
+from services.gemini_service import detect_language, translate_to_english, translate_from_english
+from services.supabase_service import (
+    insert_lead, get_all_leads, get_lead_count, update_lead_status,
+    get_lead_by_id, insert_reply, get_replies_for_lead,
+)
 
 load_dotenv()
 
@@ -99,6 +102,13 @@ ALLOWED_STATUSES = ["New", "Contacted", "Qualified", "Lost", "Won"]
 class StatusUpdate(BaseModel):
     """Payload for updating a lead's status."""
     status: str
+
+
+class ReplyRequest(BaseModel):
+    """Payload for an agent reply."""
+    message: str
+    agent_email: str
+    agent_name: str = ""
 
 
 # ------------------------------------------------------------------ #
@@ -259,3 +269,143 @@ async def patch_lead_status(lead_id: str, body: StatusUpdate):
     except RuntimeError as exc:
         logger.error("Failed to update lead %s: %s", lead_id, exc)
         raise HTTPException(status_code=500, detail=str(exc))
+
+# ------------------------------------------------------------------ #
+#  Reply Endpoints                                                     #
+# ------------------------------------------------------------------ #
+
+@app.post("/leads/{lead_id}/replies")
+async def create_reply(lead_id: str, body: ReplyRequest):
+    """
+    Agent sends a reply to a lead.
+
+    1. Fetch the lead to get the client's language.
+    2. Translate the agent's English reply to the client's language.
+    3. Persist the reply.
+    4. Send email notification to the client.
+    """
+    if not body.message.strip():
+        raise HTTPException(status_code=422, detail="Reply message is required")
+
+    # Fetch lead to determine target language
+    lead = await get_lead_by_id(lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id} not found")
+
+    client_language = lead.get("language", "english")
+    client_email = lead.get("email", "")
+    client_name = lead.get("name", "Client")
+
+    logger.info("Agent %s replying to lead %s (language: %s)",
+                body.agent_email, lead_id, client_language)
+
+    # Translate English reply to client's language
+    translation = await translate_from_english(body.message, client_language)
+    translated_reply = translation["translated_text"]
+
+    logger.info("Reply translated: EN → %s (%d chars → %d chars)",
+                client_language, len(body.message), len(translated_reply))
+
+    # Persist reply
+    reply_record = {
+        "lead_id": lead_id,
+        "agent_email": body.agent_email,
+        "agent_name": body.agent_name or body.agent_email.split("@")[0],
+        "original_message": body.message.strip(),
+        "translated_message": translated_reply,
+        "target_language": client_language,
+    }
+
+    try:
+        inserted = await insert_reply(reply_record)
+    except RuntimeError as exc:
+        logger.error("Failed to persist reply: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to save reply")
+
+    # Send email notification (best-effort, don't block on failure)
+    try:
+        _send_reply_email(
+            to_email=client_email,
+            to_name=client_name,
+            agent_name=reply_record["agent_name"],
+            original_reply=body.message,
+            translated_reply=translated_reply,
+            client_language=client_language,
+        )
+    except Exception as exc:
+        logger.warning("Email send failed (non-blocking): %s", exc)
+
+    return {"success": True, "reply": inserted}
+
+
+@app.get("/leads/{lead_id}/replies")
+async def list_replies(lead_id: str):
+    """Retrieve all replies for a given lead."""
+    replies = await get_replies_for_lead(lead_id)
+    return {"replies": replies}
+
+
+# ------------------------------------------------------------------ #
+#  Email helper                                                        #
+# ------------------------------------------------------------------ #
+
+def _send_reply_email(
+    to_email: str,
+    to_name: str,
+    agent_name: str,
+    original_reply: str,
+    translated_reply: str,
+    client_language: str,
+) -> None:
+    """
+    Send email notification to the client about the agent's reply.
+    Uses SMTP configuration from environment variables.
+    Falls back to logging if SMTP is not configured.
+    """
+    import os
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASS", "")
+    from_email = os.getenv("SMTP_FROM", smtp_user)
+
+    if not smtp_host or not smtp_user:
+        logger.info(
+            "SMTP not configured — email would be sent to %s:\n"
+            "  Agent: %s\n  Reply (EN): %s\n  Reply (%s): %s",
+            to_email, agent_name, original_reply,
+            client_language, translated_reply,
+        )
+        return
+
+    # Build HTML email
+    html_body = f"""
+    <div style="font-family: sans-serif; max-width: 600px; margin: auto;">
+        <h2 style="color: #4361ee;">New Reply from {agent_name}</h2>
+        <p>Hi {to_name},</p>
+        <div style="background: #f1f5f9; padding: 16px; border-radius: 8px; margin: 16px 0;">
+            <p style="margin: 0; font-size: 16px;">{translated_reply}</p>
+        </div>
+        <hr style="border: none; border-top: 1px solid #e2e8f0;" />
+        <p style="color: #94a3b8; font-size: 12px;">Original (English): {original_reply}</p>
+        <p style="color: #94a3b8; font-size: 12px;">— Multilingual Client Leads Manager</p>
+    </div>
+    """
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"Reply from {agent_name} — Multilingual Leads"
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg.attach(MIMEText(translated_reply, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(from_email, to_email, msg.as_string())
+
+    logger.info("Reply email sent to %s", to_email)

@@ -207,6 +207,66 @@ async def translate_to_english(text: str, source_language: str = "") -> dict[str
 
 
 # ------------------------------------------------------------------ #
+#  Reverse Translation (English → Target Language)                     #
+# ------------------------------------------------------------------ #
+
+async def translate_from_english(text: str, target_language: str = "") -> dict[str, str]:
+    """
+    Translate English *text* into *target_language*.
+
+    Used for agent replies — agents write in English,
+    the system translates to the client's original language.
+
+    Returns:
+        {
+          "original_text": "<english input>",
+          "translated_text": "<translated output>",
+          "target_language": "<target language name>"
+        }
+
+    Fallback: returns the original English text unchanged.
+    """
+    if not _get_api_key():
+        logger.warning("GEMINI_API_KEY not set — skipping reverse translation")
+        return {"original_text": text, "translated_text": text, "target_language": target_language}
+
+    if not text or not text.strip():
+        return {"original_text": text, "translated_text": text, "target_language": target_language}
+
+    # If target is English, no translation needed
+    if not target_language or target_language.lower() == "english":
+        return {"original_text": text, "translated_text": text, "target_language": "english"}
+
+    prompt = (
+        f"Translate the following English text to {target_language}. "
+        "Respond with ONLY the translated text, nothing else.\n\n"
+        f"Text: \"{text.strip()}\""
+    )
+
+    logger.info("Calling Gemini for reverse translation English → '%s'", target_language)
+
+    try:
+        client = _get_client()
+        translated = _generate_with_retry(client, prompt)
+
+        if translated.startswith('"') and translated.endswith('"'):
+            translated = translated[1:-1]
+
+        logger.info("Reverse translation result: '%s' → '%s'",
+                    text[:50], translated[:50])
+
+        return {
+            "original_text": text,
+            "translated_text": translated,
+            "target_language": target_language,
+        }
+
+    except Exception as exc:
+        logger.error("Gemini translate_from_english failed: %s", exc)
+        return {"original_text": text, "translated_text": text, "target_language": target_language}
+
+
+# ------------------------------------------------------------------ #
 #  Fallback helpers                                                    #
 # ------------------------------------------------------------------ #
 
