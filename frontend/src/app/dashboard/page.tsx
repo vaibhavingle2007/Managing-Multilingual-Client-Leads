@@ -114,7 +114,7 @@ const headerCellSx = {
 /* ------------------------------------------------------------------ */
 
 export default function DashboardPage() {
-    const { user, role, loading: authLoading, signOut } = useAuth();
+    const { user, loading: authLoading, signOut } = useAuth();
     const router = useRouter();
 
     const [leads, setLeads] = useState<Lead[]>([]);
@@ -163,6 +163,7 @@ export default function DashboardPage() {
 
     useEffect(() => {
         if (user) {
+            // eslint-disable-next-line react-hooks/exhaustive-deps
             loadLeads();
             const interval = setInterval(loadLeads, 15000);
             return () => clearInterval(interval);

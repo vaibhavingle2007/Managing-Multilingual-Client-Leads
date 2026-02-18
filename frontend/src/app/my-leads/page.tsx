@@ -11,7 +11,6 @@ import {
     CircularProgress,
     Alert,
     Button,
-    Snackbar,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import TranslateIcon from "@mui/icons-material/Translate";
@@ -91,10 +90,11 @@ export default function MyLeadsPage() {
             setError(result.error || "Failed to fetch leads");
         }
         setLoading(false);
-    }, [user?.email]);
+    }, [user]);
 
     useEffect(() => {
         if (user) {
+            // eslint-disable-next-line react-hooks/exhaustive-deps
             loadLeads();
             const interval = setInterval(loadLeads, 30000);
             return () => clearInterval(interval);
